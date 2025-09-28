@@ -1,0 +1,8 @@
+uvicorn
+langchain
+langchain-google-genai
+langgraph
+pymongo
+python-dotenv
+requests
+flask
