@@ -3,12 +3,32 @@ import requests
 import json
 from flask import Flask,request,jsonify
 from app.agent import triage_agent
+from pymongo import MongoClient
+from datetime import datetime
 
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8080")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "X9wxLzQe9RlRZhoSa1jREWgAFAZymJhMtGyR7klHt1k3Q54XlG4TkkP2v7Mus09b")
 EVOLUTION_INSTANCE_NAME = os.getenv("EVOLUTION_INSTANCE_NAME", "default")
 
 app = Flask(__name__)
+
+def save_summary_to_mongodb(summary_data):
+    mongodb_uri = os.getenv("MONGO_URI")
+    if not mongodb_uri:
+        print("Erro: MONGO_URI não encontrado para salvar o resumo.")
+        return
+    try:
+        client = MongoClient(mongodb_uri)
+        db = client["clinicai_db"]
+        summaries_collection = db["summaries"]
+        result = summaries_collection.insert_one(summary_data)
+        print(f"✅ Resumo salvo com sucesso no MongoDB com o ID: {result.inserted_id}")
+    except Exception as e:
+        print(f"❌ Erro ao salvar o resumo no MongoDB: {e}")
+    finally:
+        if 'client' in locals() and client:
+            client.close()
+
 
 def send_whatsapp_message(phone_number, message_text):
     """
@@ -65,6 +85,19 @@ def whatsapp_webhook():
                     {"messages": [("human", message_content)]},
                     config=config
                 )
+                if response.get("triage_summary"):
+                    print(f"Resumo detectado para o usuário {sender_number}. Salvando...")
+                    
+                    summary_document = {
+                        "phone_number": sender_number,
+                        "patient_name": response.get("name"),
+                        "patient_age": response.get("age"),
+                        "main_complaint": response.get("main_complaint"),
+                        "summary_text": response.get("triage_summary"),
+                        "created_at": datetime.now() 
+                    }
+                    
+                    save_summary_to_mongodb(summary_document)
                 agent_reply = response['messages'][-1].content
                 send_whatsapp_message(sender_number, agent_reply)
 

@@ -5,8 +5,9 @@ import json
 from typing import TypedDict, Annotated, List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-from langgraph.checkpoint.memory import MemorySaver
+from pymongo import MongoClient
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.mongodb import MongoDBSaver
 from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 logging.getLogger('grpc._plugin_wrapping').setLevel(logging.ERROR)
@@ -162,8 +163,7 @@ def symptom_details_node(state: AgentState) -> AgentState:
     })
     
     return {"messages": [response]}
-def summarize_node(state: AgentState) -> AgentState:
-    print("--- NÓ: Gerando Resumo ---")
+
 def summarize_node(state: AgentState) -> AgentState:
     print("--- NÓ: Gerando Resumo ---")
 
@@ -321,7 +321,13 @@ def triage_router(state: AgentState) -> str:
 # ------------------------------------------- Graph ----------------------------------------------------------------
 
 workflow = StateGraph(AgentState)
-memory = MemorySaver()
+
+MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    raise ValueError("A variável de ambiente MONGO_URI não foi definida.")
+client = MongoClient(MONGO_URI)
+memory = MongoDBSaver(client, "conversations", state_id_key="phone_number")
+
 
 # workflow.add_node("start", start_node)
 workflow.add_node("triage", triage_node)
@@ -356,32 +362,6 @@ workflow.add_conditional_edges(
 workflow.add_edge("summarize", END)
 workflow.add_edge("emergency", END)
 
-triage_agent = workflow.compile(checkpointer =memory)
+triage_agent = workflow.compile(checkpointer = memory)
 
-# if __name__ == '__main__':
-#     config = {"configurable": {"thread_id": "test-thread-1"}}
-    
-#     print("Iniciando a conversa... Diga 'oi' para começar.")
-
-#     while True:
-#         user_input = input("Você: ")
-#         if user_input.lower() in ["sair", "exit"]:
-#             break
-            
-#         response = triage_agent.invoke(
-#             {"messages": [HumanMessage(content=user_input)]}, 
-#             config
-#         )
-        
-#     
-#         current_state = triage_agent.get_state(config)
-#         print("\n--- ESTADO ATUAL ---")
-#         for key, value in current_state.values.items():
-#             if key != 'messages':
-#                 print(f"{key}: {value}")
-#         print("---------------------\n")
-        
-#         print("Agente:", response['messages'][-1].content)
-        
-#         if "procure o pronto-socorro" in response['messages'][-1].content or "Sua triagem inicial foi concluída" in response['messages'][-1].content :
-#             break
+# 
