@@ -2,7 +2,7 @@ import os
 import requests
 import json
 from flask import Flask,request,jsonify
-from app.agent import triage_agent
+from app.agent.agent import triage_agent
 from pymongo import MongoClient
 from datetime import datetime
 
@@ -13,27 +13,21 @@ EVOLUTION_INSTANCE_NAME = os.getenv("EVOLUTION_INSTANCE_NAME", "default")
 app = Flask(__name__)
 
 def save_summary_to_mongodb(summary_data):
-    mongodb_uri = os.getenv("MONGO_URI")
-    if not mongodb_uri:
-        print("Erro: MONGO_URI não encontrado para salvar o resumo.")
-        return
+    MONGO_URI = os.getenv("MONGO_URI")
     try:
-        client = MongoClient(mongodb_uri)
+        client = MongoClient(MONGO_URI)
         db = client["clinicai_db"]
         summaries_collection = db["summaries"]
         result = summaries_collection.insert_one(summary_data)
-        print(f"✅ Resumo salvo com sucesso no MongoDB com o ID: {result.inserted_id}")
+        print(f"Summary saved succesfully in MongoDB with ID: {result.inserted_id}")
     except Exception as e:
-        print(f"❌ Erro ao salvar o resumo no MongoDB: {e}")
+        print(f"Error while saving succesfully in MongoDB: {e}")
     finally:
         if 'client' in locals() and client:
             client.close()
 
 
 def send_whatsapp_message(phone_number, message_text):
-    """
-    Sends a text message to a given phone number using the Evolution API.
-    """
     api_endpoint = f"{EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE_NAME}"
     headers = {
         'Content-Type': 'application/json',
@@ -49,18 +43,14 @@ def send_whatsapp_message(phone_number, message_text):
     try:
         response = requests.post(api_endpoint, json=payload, headers=headers)
         response.raise_for_status()  
-        print(f"Successfully sent message to {phone_number}. Response: {response.json()}")
+        # print(f"Successfully sent message to {phone_number}. Response: {response.json()}")
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error sending message to {phone_number}: {e}")
+        # print(f"Error sending message to {phone_number}: {e}")
         return None
 
 @app.route('/webhook', methods=['POST'])
 def whatsapp_webhook():
-    """
-    This endpoint receives webhook notifications from the Evolution API
-    when a new message arrives.
-    """
     webhook_data = request.json
     print("--- New Webhook Received ---")
     print(json.dumps(webhook_data, indent=2))
@@ -93,7 +83,10 @@ def whatsapp_webhook():
                         "patient_name": response.get("name"),
                         "patient_age": response.get("age"),
                         "main_complaint": response.get("main_complaint"),
-                        "summary_text": response.get("triage_summary"),
+                        "symptoms_summary": response.get("symptoms_summary"),
+                        "history": response.get("history"),
+                        "measures_taken": response.get("measures_taken"),
+                        "triage_summary": response.get("triage_summary"),
                         "created_at": datetime.now() 
                     }
                     
